@@ -38,6 +38,8 @@ const HITS = [
   [92, 'BLINDLY', 'whoosh+thud', { len: 0.35, pan: -0.4 }], [96, 'EITHER', 'whoosh+thud', { len: 0.35, pan: 0.4 }],
   [100, 'intern', 'click'], [102, 'fast', 'tick'], [103.5, 'tireless', 'tick'], [105, 'you check', 'bell', { pitch: 'A5' }],
   [108, 'ASK', 'thud'], [109, 'who built it', 'type', { len: 1.2 }], [112, 'when its wrong', 'type', { len: 1.6 }],
+  [39.8, 'whip', 'whoosh', { len: 0.35 }], [47.8, 'whip', 'whoosh', { len: 0.35, pan: 0.3 }], [67.8, 'whip', 'whoosh', { len: 0.35, pan: -0.3 }],
+  [79.8, 'whip', 'whoosh', { len: 0.35 }], [98.6, 'whip', 'whoosh', { len: 0.35, pan: -0.3 }], [107.8, 'whip', 'whoosh', { len: 0.35 }],
   [116, 'END: TRUST.', 'impact'], [116, 'into end', 'riser', { len: 1 }], [117, 'BUT', 'tick'], [117.5, 'VERIFY.', 'thud+bell', { pitch: 'D6' }],
 ];
 
@@ -528,10 +530,10 @@ function sBalance(ctx, u) {
 }
 // S15 intern (100..108)
 function sIntern(ctx, u) {
-  label(ctx, 'THE MOVE', u, 100);
+  label(ctx, 'THE MOVE', u, 98.75);
   const lines = ['TREAT IT LIKE A', 'BRILLIANT INTERN.'];
   const size = fitGroup(ctx, lines, 140);
-  lines.forEach((l, i) => rise(ctx, l, X0, headTop + size * (1 + i * 0.95), size, i === 1 ? C.acc : C.ink, u, 99.8 + i * 0.35));
+  lines.forEach((l, i) => rise(ctx, l, X0, headTop + size * (1 + i * 0.95), size, i === 1 ? C.acc : C.ink, u, 98.6 + i * 0.35));
   const items = [[102, 'fast'], [103.5, 'tireless'], [105, 'YOU check its work']];
   items.forEach(([u0, s], i) => {
     const y = 1000 + i * 170;
@@ -582,42 +584,234 @@ function sEnd(ctx, u) {
   drawMeter(ctx, 540, 1420, 120, 0.04 * Math.sin(u * 2.2), mk, { ink: C.bg, acc: C.bg, dim: '#7A8F2A', bg: C.acc }, false);
 }
 
+
+// ================================================================ POWER-EDIT LAYER
+// b-roll (procedural footage drawn in code), HUD, whips, light leaks, beat pulse, grade.
+
+// ---------------------------------------------------------------- b-roll
+function bgGrid(ctx, u, a) {
+  const hz = H * 0.6, vx = W / 2;
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = C.acc; ctx.lineWidth = 2;
+  for (let i = -14; i <= 14; i++) { ctx.beginPath(); ctx.moveTo(vx, hz); ctx.lineTo(vx + i * 260, H + 40); ctx.stroke(); }
+  const ph = (u * 0.5) % 1;
+  for (let i = 0; i < 14; i++) {
+    const z = i + 1 - ph, y = hz + 520 / z;
+    if (y > H + 10) continue;
+    ctx.globalAlpha = a * clamp(1.4 - z / 10);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  const g = ctx.createLinearGradient(0, hz - 220, 0, hz + 10);
+  g.addColorStop(0, 'rgba(200,255,46,0)'); g.addColorStop(1, 'rgba(200,255,46,0.35)');
+  ctx.globalAlpha = a; ctx.fillStyle = g; ctx.fillRect(0, hz - 220, W, 230);
+  ctx.restore();
+}
+const NN = (() => {
+  const rows = [4, 6, 7, 6, 3], nodes = [];
+  rows.forEach((n, r) => { for (let i = 0; i < n; i++) nodes.push({ r, x: W * (i + 1) / (n + 1) + (hash01(r * 9 + i, 4) - 0.5) * 60, y: 380 + r * 270 + (hash01(r * 7 + i, 6) - 0.5) * 50 }); });
+  const edges = [];
+  nodes.forEach((a, i) => nodes.forEach((b, j) => { if (b.r === a.r + 1 && hash01(i * 31 + j, 2) > 0.35) edges.push([a, b, hash01(i * 13 + j, 3)]); }));
+  return { nodes, edges };
+})();
+function bgNeural(ctx, u, a) {
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.lineWidth = 1.5; ctx.strokeStyle = C.dim;
+  for (const [p, q] of NN.edges) { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); }
+  for (const [p, q, h] of NN.edges) {
+    const k = ((u * 0.5 + h) % 1);
+    ctx.beginPath(); ctx.arc(lerp(p.x, q.x, k), lerp(p.y, q.y, k), 5, 0, TAU); ctx.fillStyle = C.acc; ctx.fill();
+  }
+  NN.nodes.forEach((n, i) => {
+    const fire = Math.exp(-(((u + hash01(i, 8) * 4) % 4)) * 2);
+    ctx.beginPath(); ctx.arc(n.x, n.y, 11 + 10 * fire, 0, TAU); ctx.fillStyle = fire > 0.3 ? C.acc : C.ink; ctx.fill();
+  });
+  ctx.restore();
+}
+const RAIN_CH = '01ABCDEF<>/#$%?!01';
+function bgRain(ctx, u, a, glyphs = RAIN_CH) {
+  ctx.save(); ctx.font = MONO(30); ctx.textAlign = 'center';
+  for (let c = 0; c < 24; c++) {
+    const x = 24 + c * 45, sp = 3 + hash01(c, 4) * 5, len = 10 + Math.floor(hash01(c, 5) * 14);
+    const head = ((u * sp + hash01(c, 6) * 60) % 70) * 34 - 200;
+    for (let k = 0; k < len; k++) {
+      const y = head - k * 34;
+      if (y < 0 || y > H) continue;
+      const ch = glyphs[Math.floor(hash01(c * 97 + k + Math.floor(u * 4), 7) * glyphs.length)];
+      ctx.globalAlpha = a * (k === 0 ? 1 : 0.55 * (1 - k / len));
+      ctx.fillStyle = k === 0 ? C.ink : C.acc;
+      ctx.fillText(ch, x, y);
+    }
+  }
+  ctx.restore();
+}
+function bgFeed(ctx, u, a) {
+  ctx.save(); ctx.globalAlpha = a;
+  const sp = (u - 8) * 900;
+  for (let col = 0; col < 2; col++) for (let i = 0; i < 12; i++) {
+    const x = 60 + col * 500, y = ((i * 380 - sp * (col ? 1.3 : 1)) % (12 * 380) + 12 * 380) % (12 * 380) - 380;
+    rrect(ctx, x, y, 460, 340, 22); ctx.fillStyle = '#141416'; ctx.fill();
+    ctx.fillStyle = C.line; ctx.fillRect(x + 24, y + 24, 412, 200);
+    ctx.fillStyle = C.dim; ctx.fillRect(x + 24, y + 250, 300, 18); ctx.fillRect(x + 24, y + 286, 200, 14);
+    ctx.beginPath(); ctx.arc(x + 410, y + 290, 18, 0, TAU); ctx.fillStyle = hash01(i + col * 50, 3) > 0.6 ? C.acc : C.dim; ctx.fill();
+  }
+  ctx.restore();
+}
+function bgMap(ctx, u, a) {
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = C.dim; ctx.lineWidth = 3;
+  const k = prog(u, 9.4, 11);
+  ctx.translate(W / 2, H / 2); ctx.rotate(-0.35 + 0.08 * k); ctx.scale(1.2 + 0.15 * k, 1.2 + 0.15 * k); ctx.translate(-W / 2, -H / 2);
+  for (let i = -6; i < 20; i++) { ctx.beginPath(); ctx.moveTo(-400, i * 120 + hash01(i, 2) * 40); ctx.lineTo(W + 400, i * 120 + hash01(i, 3) * 40 + 60); ctx.stroke(); }
+  for (let i = -6; i < 14; i++) { ctx.beginPath(); ctx.moveTo(i * 140 + hash01(i, 4) * 50, -400); ctx.lineTo(i * 140 + hash01(i, 5) * 50 - 80, H + 400); ctx.stroke(); }
+  const pts = [[120, 1500], [120, 1150], [420, 1150], [420, 820], [760, 820], [760, 520]];
+  ctx.strokeStyle = C.acc; ctx.lineWidth = 12; ctx.lineJoin = 'round'; ctx.globalAlpha = Math.min(1, a * 2.2);
+  const total = pts.length - 1, upto = E.outCubic(k) * total;
+  ctx.beginPath(); ctx.moveTo(...pts[0]);
+  for (let i = 1; i <= total; i++) { const f = clamp(upto - (i - 1)); if (f <= 0) break; ctx.lineTo(lerp(pts[i - 1][0], pts[i][0], f), lerp(pts[i - 1][1], pts[i][1], f)); }
+  ctx.stroke();
+  ctx.restore();
+}
+function bgCity(ctx, u, a) {
+  ctx.save(); ctx.globalAlpha = a;
+  const n = 18, bw = W / n;
+  for (let i = 0; i < n; i++) {
+    const kick = Math.exp(-((u + i * 0.05) % 1) * 4);
+    const h0 = 160 + hash01(i, 9) * 520;
+    const h = h0 * springU(u, 23.8 + i * 0.03, SPRING.bouncy) * (0.85 + 0.15 * kick);
+    ctx.fillStyle = i % 5 === 2 ? C.acc : '#1A1A1D';
+    ctx.fillRect(i * bw + 4, H - 380 - h, bw - 8, h);
+  }
+  ctx.restore();
+}
+const BROLL = [
+  [0, 8, (c, u) => bgGrid(c, u, 0.35)], [8, 9.5, (c, u) => bgFeed(c, u, 0.45)], [9.5, 11, (c, u) => bgMap(c, u, 0.55)],
+  [11, 12.5, (c, u) => bgRain(c, u, 0.35, '0123456789$.,')], [12.5, 16, (c, u) => bgGrid(c, u, 0.3)],
+  [16, 24, (c, u) => bgNeural(c, u, 0.28)], [24, 32, (c, u) => bgCity(c, u, 0.6)],
+  [52, 60, (c, u) => bgRain(c, u, 0.4)], [60, 68, (c, u) => bgRain(c, u, 0.14)],
+  [84, 92, (c, u) => bgNeural(c, u, 0.3)], [92, 98.75, (c, u) => bgGrid(c, u, 0.22)], [98.75, 108, (c, u) => bgGrid(c, u, 0.16)], [108, 116, (c, u) => bgNeural(c, u, 0.14)],
+];
+
 const SCENES = [
   [0, 8, sHook], [8, 16, sEveryday], [16, 24, sDrop], [24, 32, sFor], [32, 40, sHealth], [40, 48, sMoney],
   [48, 52, sAlways], [52, 60, sAgainst], [60, 68, sMadeUp], [68, 72, sBias], [72, 80, sFakes], [80, 84, sAttention],
-  [84, 92, sVerdict], [92, 100, sBalance], [100, 108, sIntern], [108, 116, sAsk], [116, 999, sEnd],
+  [84, 92, sVerdict], [92, 98.75, sBalance], [98.75, 108, sIntern], [108, 116, sAsk], [116, 999, sEnd],
 ];
 const SHAKES = [[0, 18], [16, 34], [52, 46], [66.5, 22], [84, 30], [116, 30]];
+// whip pans: [beat, axis, sign]; both shots on screen, motion-blurred by the shutter
+const WHIPS = [[40, 'x', 1], [48, 'y', 1], [68, 'x', -1], [72, 'y', -1], [80, 'x', 1], [98.75, 'x', -1], [108, 'y', 1]];
+const WH = 0.32;
+const LEAKS = [16, 24, 32, 52, 84, 116];
 
-// ---------------------------------------------------------------- post: glitch, grain, vignette
+function drawScene(ctx, u, i) {
+  const [a, b, fn] = SCENES[i];
+  const uu = clamp(u, a, b - 1e-3);
+  const br = BROLL.find(([x, y]) => uu >= x && uu < y);
+  ctx.save();
+  // slow push across each shot
+  M.zoomAbout(ctx, 1 + 0.035 * prog(u, a, Math.min(b, a + 16)), W / 2, H * 0.45);
+  if (br) br[2](ctx, u);
+  fn(ctx, u);
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- HUD
+let ENV = null;
+const envAt = (t) => (ENV ? ENV[clamp(Math.floor(t * 100), 0, ENV.length - 1)] : 0);
+const TAGS = [[0, 'INTRO'], [16, 'SCAN'], [24, 'CASE: FOR'], [52, 'CASE: AGAINST'], [84, 'VERDICT'], [116, 'END']];
+function hud(ctx, u, t) {
+  const end = u >= 116;
+  const ink = end ? C.bg : C.ink, dim = end ? 'rgba(10,10,11,0.55)' : C.dim, acc = end ? C.bg : C.acc;
+  ctx.save();
+  const on = springU(u, -0.2, SPRING.snappy);
+  ctx.globalAlpha = clamp(on);
+  // viewfinder brackets
+  const bx0 = 36, by0 = 150, bx1 = W - 36, by1 = H - 330, L = 46;
+  ctx.strokeStyle = dim; ctx.lineWidth = 3;
+  [[bx0, by0, 1, 1], [bx1, by0, -1, 1], [bx0, by1, 1, -1], [bx1, by1, -1, -1]].forEach(([x, y, sx, sy]) => {
+    ctx.beginPath(); ctx.moveTo(x, y + sy * L); ctx.lineTo(x, y); ctx.lineTo(x + sx * L, y); ctx.stroke();
+  });
+  // top line: REC + id, timecode
+  if (Math.floor(u) % 2 === 0) { ctx.beginPath(); ctx.arc(bx0 + 22, by0 + 44, 9, 0, TAU); ctx.fillStyle = acc; ctx.fill(); }
+  text(ctx, 'REC  TRUST.SCAN v2.6', bx0 + 42, by0 + 53, MONO(24), ink);
+  const fr = Math.floor(t * 30) % 30, ss = Math.floor(t) % 60;
+  text(ctx, `00:00:${String(ss).padStart(2, '0')}:${String(fr).padStart(2, '0')}`, bx1 - 14, by0 + 53, MONO(24), ink, 'right');
+  const conf = (0.5 + 0.5 * noise1(u * 0.7, 12)).toFixed(2);
+  text(ctx, `CONF ${conf}  ·  ${String(Math.round(120)).padStart(3, '0')} BPM`, bx1 - 14, by0 + 88, MONO(20), dim, 'right');
+  // right-edge ruler
+  if (!end) {
+    ctx.fillStyle = dim;
+    const off = (u * 24) % 40;
+    for (let y = 420; y < 1380; y += 40) { const yy = y + off; ctx.fillRect(W - 30, yy, (Math.round((yy - off) / 40) % 5 === 0) ? 18 : 9, 2); }
+    const my = 420 + ((u / 120) * 960);
+    ctx.fillStyle = acc; ctx.beginPath(); ctx.moveTo(W - 34, my); ctx.lineTo(W - 50, my - 9); ctx.lineTo(W - 50, my + 9); ctx.fill();
+  }
+  // section tag + live voice waveform
+  const tag = TAGS.filter(([b]) => u >= b).pop()[1];
+  text(ctx, `[ ${tag} ]`, bx0 + 14, by1 - 18, MONO(22), dim);
+  const n = 28, bw = 6, gx = bx1 - 14 - n * (bw + 4);
+  for (let i = 0; i < n; i++) {
+    const v = envAt(t - (n - i) * 0.02);
+    const h = 4 + v * 46;
+    ctx.fillStyle = v > 0.15 ? acc : dim;
+    ctx.fillRect(gx + i * (bw + 4), by1 - 26 - h / 2, bw, h);
+  }
+  text(ctx, 'VOICE', gx - 12, by1 - 18, MONO(22), dim, 'right');
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- post helpers
 const GL = [[52, 1.0, 0.9], [53, 0.4, 0.4], [54.5, 0.35, 0.4], [60, 0.25, 0.3], [66.5, 0.5, 0.4], [72, 0.3, 0.3], [74, 0.3, 0.3], [76, 0.55, 0.5], [83.5, 0.4, 0.4]];
 function glitchAmt(u) {
   let g = 0;
   for (const [u0, a, d] of GL) if (u >= u0) g += a * Math.exp(-(u - u0) / d) * (u - u0 < d * 4 ? 1 : 0);
   return g;
 }
-let NOISE = null;
+const whipAmt = (u) => Math.max(0, ...WHIPS.map(([b]) => 1 - Math.abs(u - b) / WH));
+const leakAmt = (u) => Math.max(0, ...LEAKS.map((b) => (u >= b - 0.25 ? Math.exp(-Math.max(0, u - b) / 0.9) * prog(u, b - 0.25, b) : 0)));
+let NOISE = null, SCAN = null;
 function makeNoise() {
   const c = document.createElement('canvas'); c.width = c.height = 256;
   const x = c.getContext('2d'); const im = x.createImageData(256, 256); const r = mulberry32(99);
   for (let i = 0; i < im.data.length; i += 4) { const v = r() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
   x.putImageData(im, 0, 0); return c;
 }
+function makeScan() {
+  const c = document.createElement('canvas'); c.width = 4; c.height = 4;
+  const x = c.getContext('2d'); x.fillStyle = 'rgba(0,0,0,0.18)'; x.fillRect(0, 3, 4, 1); return c;
+}
 
 M.film({
   fonts: [D(100), MONO(40)],
   hits: HITS,
-  samples: 12,
-  init() { NOISE = makeNoise(); },
-  draw(ctx, u) {
+  samples: (t) => { const u = (t - 0.00175) / 0.5; return (u >= 52 && u < 68) || (u >= 11 && u < 12.5) ? 6 : 12; },
+  async init() {
+    NOISE = makeNoise(); SCAN = makeScan();
+    try { ENV = await fetch('vo_env.json').then((r) => r.json()); } catch { ENV = null; }
+  },
+  draw(ctx, u, t) {
     fill(ctx, C.bg);
     ctx.save();
     for (const [u0, a] of SHAKES) shake(ctx, u, u0, a);
-    const sc = SCENES.find(([a, b]) => u >= a && u < b) || SCENES[0];
-    sc[2](ctx, u);
+    // beat pulse: a kick-locked camera punch through the main section
+    if (u >= 16 && u < 116) {
+      const kick = Math.exp(-(u % 1) * 7), down = Math.exp(-(u % 4) * 5);
+      M.zoomAbout(ctx, 1 + 0.009 * kick + 0.012 * down, W / 2, H / 2);
+    }
+    const idx = SCENES.findIndex(([a, b]) => u >= a && u < b);
+    const wh = WHIPS.find(([b]) => Math.abs(u - b) < WH);
+    if (wh && idx > 0) {
+      const [b, ax, sg] = wh;
+      const ia = SCENES.findIndex(([, e]) => Math.abs(e - b) < 1e-6), ib = ia + 1;
+      const p = E.inOutCubic(prog(u, b - WH, b + WH));
+      const D0 = (ax === 'x' ? W : H) * sg;
+      const tr = (d) => (ax === 'x' ? ctx.translate(d, 0) : ctx.translate(0, d));
+      ctx.save(); tr(-D0 * p); drawScene(ctx, u, ia); ctx.restore();
+      ctx.save(); tr(D0 * (1 - p)); fill(ctx, C.bg); drawScene(ctx, u, ib); ctx.restore();
+    } else {
+      drawScene(ctx, u, Math.max(0, idx));
+    }
     const [cx, cy, R] = meterGeom(u);
     drawMeter(ctx, cx, cy, R, needle(u), meterVis(u));
     ctx.restore();
+    hud(ctx, u, t);
   },
   post(ctx, u, t) {
     const g = glitchAmt(u);
@@ -632,14 +826,40 @@ M.film({
         if (hash01(fr * 5 + i, 12) > 0.8) { ctx.globalAlpha = 0.5 * Math.min(1, g); ctx.fillStyle = C.acc; ctx.fillRect(0, y, W, 3); ctx.globalAlpha = 1; }
       }
     }
+    // chromatic split on whips, glitches and leaks
+    const ca = Math.min(1, whipAmt(u) + g * 0.8 + leakAmt(u) * 0.5);
+    if (ca > 0.03) {
+      ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = 0.35 * ca;
+      ctx.drawImage(ctx.canvas, 14 * ca, 0); ctx.drawImage(ctx.canvas, -14 * ca, 0);
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    }
+    // light leak: an acid flare sweeping across on structural cuts
+    const lk = leakAmt(u);
+    if (lk > 0.02) {
+      const b = LEAKS.filter((x) => u >= x - 0.25).pop();
+      const lx = lerp(-200, W + 200, prog(u, b - 0.25, b + 2)), ly = H * (0.3 + 0.4 * hash01(b, 4));
+      const lg = ctx.createRadialGradient(lx, ly, 0, lx, ly, 900);
+      lg.addColorStop(0, `rgba(220,255,120,${0.55 * lk})`); lg.addColorStop(0.4, `rgba(200,255,46,${0.18 * lk})`); lg.addColorStop(1, 'rgba(200,255,46,0)');
+      ctx.globalCompositeOperation = 'screen'; ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
+    }
+    // LUT: contrast/saturation curve, then teal shadows / acid highlights split-tone
+    ctx.filter = 'contrast(1.1) saturate(1.15)';
+    ctx.drawImage(ctx.canvas, 0, 0);
+    ctx.filter = 'none';
+    const st = ctx.createLinearGradient(0, 0, 0, H);
+    st.addColorStop(0, 'rgba(210,255,90,0.16)'); st.addColorStop(0.55, 'rgba(40,120,120,0.10)'); st.addColorStop(1, 'rgba(10,80,95,0.28)');
+    ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = st; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+    // scanlines
+    if (SCAN) { ctx.globalAlpha = 0.5; ctx.fillStyle = ctx.createPattern(SCAN, 'repeat'); ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
     // vignette
     const vg = ctx.createRadialGradient(W / 2, H * 0.48, H * 0.3, W / 2, H * 0.5, H * 0.75);
-    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.45)');
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.5)');
     ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
     // grain
     if (NOISE) {
       const fr = Math.floor(t * 24);
-      ctx.globalAlpha = 0.07; ctx.globalCompositeOperation = 'overlay';
+      ctx.globalAlpha = 0.08; ctx.globalCompositeOperation = 'overlay';
       const ox = Math.floor(hash01(fr, 21) * 256), oy = Math.floor(hash01(fr, 22) * 256);
       ctx.fillStyle = ctx.createPattern(NOISE, 'repeat');
       ctx.translate(-ox, -oy); ctx.fillRect(0, 0, W + 256, H + 256); ctx.translate(ox, oy);
